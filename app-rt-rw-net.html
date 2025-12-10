@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RT/RW Net Manager Mobile</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        /* --- CORE UI --- */
+        body { margin: 0; padding: 0; font-family: 'Inter', sans-serif; overflow: hidden; background: #f0f2f5; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
+
+        /* --- NAVBAR & SEARCH --- */
+        .navbar {
+            position: absolute; top: 10px; left: 10px; right: 10px;
+            background: white; height: 50px; border-radius: 8px;
+            display: flex; align-items: center; padding: 0 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1); z-index: 1000;
+        }
+        .nav-icon { color: #666; font-size: 18px; cursor: pointer; }
+        .search-input {
+            flex: 1; border: none; outline: none; margin: 0 15px;
+            font-size: 16px; font-family: inherit;
+        }
+        
+        /* --- FLOATING ACTION BUTTON (FAB) --- */
+        .fab-container {
+            position: absolute; bottom: 30px; right: 20px;
+            display: flex; flex-direction: column; align-items: flex-end; gap: 15px;
+            z-index: 1000;
+        }
+        .fab-main {
+            width: 60px; height: 60px; border-radius: 50%;
+            background: #2563eb; color: white; border: none;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4);
+            font-size: 24px; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; transition: transform 0.2s;
+        }
+        .fab-main.active { transform: rotate(45deg); background: #dc2626; }
+        
+        .fab-menu {
+            display: none; flex-direction: column; gap: 10px; align-items: flex-end;
+        }
+        .fab-menu.show { display: flex; animation: slideUp 0.3s; }
+        
+        .fab-item {
+            display: flex; align-items: center; gap: 10px;
+            background: white; padding: 10px 15px; border-radius: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15); cursor: pointer;
+        }
+        .fab-item span { font-weight: 600; font-size: 14px; color: #333; }
+        .fab-icon {
+            width: 40px; height: 40px; border-radius: 50%;
+            display: flex; justify-content: center; align-items: center;
+            color: white; font-size: 18px;
+        }
+
+        /* --- COLORS --- */
+        .bg-server { background: #475569; }
+        .bg-odc { background: #0891b2; }
+        .bg-odp { background: #16a34a; }
+        .bg-onu { background: #ca8a04; }
+        .bg-cable { background: #db2777; }
+        .bg-gps { background: white; color: #2563eb; }
+
+        /* --- BOTTOM SHEET (MODAL) --- */
+        .bottom-sheet {
+            position: fixed; bottom: -100%; left: 0; right: 0;
+            background: white; border-radius: 20px 20px 0 0;
+            padding: 25px; z-index: 2000; transition: bottom 0.3s ease;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.1);
+        }
+        .bottom-sheet.active { bottom: 0; }
+        .sheet-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .sheet-title { font-size: 18px; font-weight: 700; color: #1e293b; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 8px; font-weight: 600; font-size: 14px; color: #64748b; }
+        .form-input {
+            width: 100%; padding: 12px; border: 1px solid #e2e8f0;
+            border-radius: 8px; font-size: 16px; outline: none; box-sizing: border-box;
+        }
+        .btn-block {
+            width: 100%; padding: 14px; background: #2563eb; color: white;
+            border: none; border-radius: 10px; font-weight: 600; font-size: 16px;
+        }
+
+        /* --- STATUS BADGE --- */
+        .status-badge {
+            position: absolute; top: 70px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.7); color: white; padding: 8px 16px;
+            border-radius: 20px; font-size: 12px; font-weight: 600;
+            display: none; z-index: 1000; pointer-events: none;
+        }
+
+        /* --- MENU DRAWER --- */
+        .drawer {
+            position: fixed; top: 0; left: -280px; width: 280px; height: 100%;
+            background: white; z-index: 3000; transition: left 0.3s;
+            box-shadow: 5px 0 15px rgba(0,0,0,0.1); padding: 20px; box-sizing: border-box;
+        }
+        .drawer.open { left: 0; }
+        .drawer-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 2500; display: none;
+        }
+        .drawer-overlay.open { display: block; }
+        .drawer h3 { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+        .drawer-item { padding: 12px 0; border-bottom: 1px solid #f1f5f9; cursor: pointer; display: flex; align-items: center; gap: 10px;}
+
+        /* CSS Animation */
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Popup Custom Style */
+        .leaflet-popup-content-wrapper { border-radius: 12px; }
+        .popup-btn { 
+            width: 100%; padding: 8px; margin-top: 5px; border: none; border-radius: 6px; 
+            cursor: pointer; font-weight: 600; color: white; 
+        }
+        .btn-delete { background: #ef4444; }
+    </style>
+</head>
+<body>
+
+<!-- NAVBAR -->
+<div class="navbar">
+    <i class="fas fa-bars nav-icon" onclick="toggleDrawer()"></i>
+    <input type="text" class="search-input" id="searchBox" placeholder="Cari ODP / Pelanggan..." onkeyup="searchMap()">
+    <i class="fas fa-search nav-icon"></i>
+</div>
+
+<!-- STATUS INDIKATOR -->
+<div class="status-badge" id="modeStatus">Mode: Lihat Peta</div>
+
+<!-- MENU DRAWER (SIDEBAR SETTINGS) -->
+<div class="drawer-overlay" onclick="toggleDrawer()"></div>
+<div class="drawer" id="mainDrawer">
+    <h3>Pengaturan Data</h3>
+    <div class="drawer-item" onclick="saveDataFile()"><i class="fas fa-download"></i> Backup Data (.json)</div>
+    <div class="drawer-item" onclick="document.getElementById('fileInput').click()"><i class="fas fa-upload"></i> Restore Data</div>
+    <div class="drawer-item" onclick="resetMap()" style="color:red;"><i class="fas fa-trash"></i> Hapus Semua Data</div>
+    <input type="file" id="fileInput" hidden onchange="loadFromFile(this)">
+    <div style="margin-top:20px; font-size:12px; color:#999;">
+        RT/RW Net Manager v6.0<br>Mobile Optimized
+    </div>
+</div>
+
+<!-- FLOATING ACTION BUTTONS -->
+<div class="fab-container">
+    <!-- GPS Button (Separate) -->
+    <button class="fab-main bg-gps" onclick="locateUser()" style="width:50px; height:50px; font-size:18px; margin-bottom:10px; color:#2563eb; background:white;">
+        <i class="fas fa-crosshairs"></i>
+    </button>
+
+    <div class="fab-menu" id="fabMenu">
+        <div class="fab-item" onclick="setMode('onu')">
+            <span>Pelanggan (ONU)</span>
+            <div class="fab-icon bg-onu"><i class="fas fa-home"></i></div>
+        </div>
+        <div class="fab-item" onclick="setMode('odp')">
+            <span>ODP (Tiang)</span>
+            <div class="fab-icon bg-odp"><i class="fas fa-box"></i></div>
+        </div>
+        <div class="fab-item" onclick="setMode('odc')">
+            <span>ODC / OTB</span>
+            <div class="fab-icon bg-odc"><i class="fas fa-server"></i></div>
+        </div>
+        <div class="fab-item" onclick="setMode('cable')">
+            <span>Tarik Kabel</span>
+            <div class="fab-icon bg-cable"><i class="fas fa-bezier-curve"></i></div>
+        </div>
+    </div>
+    <button class="fab-main" id="fabMain" onclick="toggleFab()">
+        <i class="fas fa-plus"></i>
+    </button>
+</div>
+
+<!-- BOTTOM SHEET (FORM ODP) -->
+<div class="bottom-sheet" id="odpSheet">
+    <div class="sheet-header">
+        <div class="sheet-title">Tambah ODP Baru</div>
+        <i class="fas fa-times" style="font-size:20px; cursor:pointer;" onclick="closeSheet()"></i>
+    </div>
+    <div class="form-group">
+        <label>Nama ODP</label>
+        <input type="text" class="form-input" id="odpName" placeholder="Cth: ODP-A-01">
+    </div>
+    <div class="form-group">
+        <label>Kapasitas Splitter</label>
+        <select class="form-input" id="odpSplitter">
+            <option value="1:2">1:2 (2 Port)</option>
+            <option value="1:4">1:4 (4 Port)</option>
+            <option value="1:8" selected>1:8 (8 Port)</option>
+            <option value="1:16">1:16 (16 Port)</option>
+        </select>
+    </div>
+    <button class="btn-block" onclick="saveODP()">Simpan ODP</button>
+</div>
+
+<!-- MAP CONTAINER -->
+<div id="map"></div>
+
+<!-- LEAFLET SCRIPT -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // --- 1. SETUP PETA & ICON ---
+    var map = L.map('map', { zoomControl: false }).setView([-6.200000, 106.816666], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM' }).addTo(map);
+
+    var drawnItems = new L.FeatureGroup().addTo(map);
+    var userLayer = new L.FeatureGroup().addTo(map);
+
+    // Custom Icons (Menggunakan FontAwesome Marker HTML agar bisa ganti warna via CSS)
+    function createDivIcon(type, color) {
+        let iconClass = 'fa-map-marker-alt';
+        if(type === 'odp') iconClass = 'fa-box'; 
+        if(type === 'onu') iconClass = 'fa-home';
+        if(type === 'odc') iconClass = 'fa-server';
+        
+        return L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div style="background-color:${color}; width:36px; height:36px; border-radius:50%; display:flex; justify-content:center; align-items:center; color:white; border:2px solid white; box-shadow:0 3px 6px rgba(0,0,0,0.3);">
+                    <i class="fas ${iconClass}" style="font-size:16px;"></i>
+                   </div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20], // Center Icon
+            popupAnchor: [0, -20]
+        });
+    }
+
+    var icons = {
+        server: createDivIcon('odc', '#475569'),
+        odc: createDivIcon('odc', '#0891b2'),
+        odp: createDivIcon('odp', '#16a34a'), // Hijau default
+        odpFull: createDivIcon('odp', '#dc2626'), // Merah penuh
+        onu: createDivIcon('onu', '#ca8a04')
+    };
+
+    // --- 2. LOGIKA UTAMA ---
+    var currentMode = null;
+    var tempLatLng = null;
+    var tempCablePoints = [];
+    var tempCableLine = null;
+
+    // --- 3. UI CONTROLLER ---
+    function toggleFab() {
+        document.getElementById('fabMenu').classList.toggle('show');
+        document.getElementById('fabMain').classList.toggle('active');
+        // Reset mode jika menutup menu
+        if(!document.getElementById('fabMenu').classList.contains('show')) resetMode();
+    }
+
+    function toggleDrawer() {
+        document.getElementById('mainDrawer').classList.toggle('open');
+        document.querySelector('.drawer-overlay').classList.toggle('open');
+    }
+
+    function resetMode() {
+        currentMode = null;
+        document.getElementById('modeStatus').style.display = 'none';
+        // Bersihkan temp cable
+        tempCablePoints = [];
+        if(tempCableLine) { map.removeLayer(tempCableLine); tempCableLine = null; }
+    }
+
+    function setMode(mode) {
+        currentMode = mode;
+        toggleFab(); // Tutup menu setelah pilih
+        
+        var label = "";
+        if(mode === 'onu') label = "Klik Peta untuk Tambah Pelanggan";
+        if(mode === 'odp') label = "Klik Peta untuk Tambah ODP";
+        if(mode === 'cable') label = "Klik Titik-titik Jalur Kabel";
+        
+        var badge = document.getElementById('modeStatus');
+        badge.innerText = label;
+        badge.style.display = 'block';
+    }
+
+    function closeSheet() {
+        document.getElementById('odpSheet').classList.remove('active');
+        resetMode();
+    }
+
+    // --- 4. MAP INTERACTION ---
+    map.on('click', function(e) {
+        if(!currentMode) return;
+
+        if(currentMode === 'odp') {
+            tempLatLng = e.latlng;
+            document.getElementById('odpName').value = "ODP-" + Math.floor(Math.random()*1000);
+            document.getElementById('odpSheet').classList.add('active'); // Buka Sheet
+        } 
+        else if(currentMode === 'onu') {
+            var name = prompt("Nama Pelanggan:");
+            if(name) {
+                var marker = createMarker('onu', e.latlng, {name: name});
+                if(connectToSmartODP(marker)) {
+                    drawnItems.addLayer(marker);
+                    saveData();
+                    resetMode();
+                }
+            }
+        }
+        else if(currentMode === 'cable') {
+            tempCablePoints.push(e.latlng);
+            if (tempCableLine) map.removeLayer(tempCableLine);
+            tempCableLine = L.polyline(tempCablePoints, {color: '#db2777', weight:4}).addTo(map);
+            
+            // Tambahkan tombol selesai kecil di dekat titik terakhir (opsional) atau pakai logika klik marker
+        }
+        else if(currentMode === 'odc') {
+            var name = prompt("Nama ODC:");
+            if(name) {
+                drawnItems.addLayer(createMarker('odc', e.latlng, {name: name}));
+                saveData();
+                resetMode();
+            }
+        }
+    });
+
+    // Untuk menyelesaikan kabel, kita klik marker terakhir yang kita buat
+    // Atau kita buat tombol "Selesai" di status badge untuk mobile UX yg lebih baik
+    document.getElementById('modeStatus').addEventListener('click', function() {
+        if(currentMode === 'cable' && tempCablePoints.length > 1) {
+            finishCable();
+        }
+    });
+
+    function finishCable() {
+        var name = prompt("Nama Jalur Kabel:");
+        if(name) {
+            var polyline = L.polyline(tempCablePoints, {color: '#db2777', weight: 4});
+            var dist = 0;
+            for(let i=0; i<tempCablePoints.length-1; i++) dist += tempCablePoints[i].distanceTo(tempCablePoints[i+1]);
+            
+            polyline.feature = { type: 'Feature', properties: { type: 'cable', name: name, distance: dist.toFixed(0) } };
+            bindPopupAction(polyline);
+            drawnItems.addLayer(polyline);
+            saveData();
+        }
+        resetMode();
+    }
+
+    function saveODP() {
+        var name = document.getElementById('odpName').value;
+        var splitter = document.getElementById('odpSplitter').value;
+        if(name && tempLatLng) {
+            drawnItems.addLayer(createMarker('odp', tempLatLng, {name: name, splitter: splitter}));
+            saveData();
+            closeSheet();
+        }
+    }
+
+    // --- 5. SMART LOGIC & MARKER CREATION ---
+    function createMarker(type, latlng, props) {
+        var icon = icons[type] || icons.odp;
+        
+        // Cek warna icon ODP saat load
+        if(type === 'odp') {
+            var cap = getCapacity(props.splitter);
+            var used = countConnections(props.name);
+            if(used >= cap) icon = icons.odpFull;
+        }
+
+        var marker = L.marker(latlng, {icon: icon, draggable: true});
+        marker.feature = { type: 'Feature', properties: { type: type, ...props } };
+        bindPopupAction(marker);
+        
+        marker.on('dragend', function() { saveData(); });
+        return marker;
+    }
+
+    function bindPopupAction(layer) {
+        var p = layer.feature.properties;
+        var desc = `<b>${p.name}</b><br><span style="color:#666; font-size:12px">${p.type.toUpperCase()}</span>`;
+        
+        if(p.type === 'odp') {
+            var cap = getCapacity(p.splitter);
+            var used = countConnections(p.name);
+            var color = (used >= cap) ? 'red' : 'green';
+            desc += `<br>Slot: <b style="color:${color}">${used} / ${cap}</b>`;
+        }
+        if(p.distance) desc += `<br>Panjang: ${p.distance}m`;
+
+        // Tombol Hapus di dalam Popup (Mobile Friendly)
+        var btnId = "btn-del-" + Math.floor(Math.random()*10000);
+        var popupContent = `<div>${desc}<button id="${btnId}" class="popup-btn btn-delete">Hapus Data</button></div>`;
+        
+        layer.bindPopup(popupContent);
+        
+        layer.on('popupopen', function() {
+            document.getElementById(btnId).onclick = function() {
+                if(confirm("Hapus " + p.name + "?")) {
+                    drawnItems.removeLayer(layer);
+                    
+                    // Jika ODP dihapus, update icon ODP lain jika ada relasi (opsional)
+                    // Disini kita refresh visual ODP lain jika ONU dihapus
+                    if(p.type === 'cable_dropcore') refreshODPIcons();
+                    
+                    saveData();
+                }
+            };
+        });
+    }
+
+    function connectToSmartODP(onuMarker) {
+        var onuLatLng = onuMarker.getLatLng();
+        var candidates = [];
+        
+        drawnItems.eachLayer(layer => {
+            if(layer.feature && layer.feature.properties.type === 'odp') {
+                candidates.push({ layer: layer, dist: onuLatLng.distanceTo(layer.getLatLng()) });
+            }
+        });
+        
+        candidates.sort((a,b) => a.dist - b.dist);
+        
+        for(let c of candidates) {
+            var odp = c.layer;
+            var props = odp.feature.properties;
+            var cap = getCapacity(props.splitter);
+            var used = countConnections(props.name);
+            
+            if(used < cap) {
+                var line = L.polyline([odp.getLatLng(), onuLatLng], {color: '#ca8a04', dashArray: '5,5', weight: 2});
+                line.feature = { type: 'Feature', properties: { 
+                    type: 'cable_dropcore', name: 'Drop ke ' + onuMarker.feature.properties.name, 
+                    source_odp: props.name, distance: c.dist.toFixed(0) 
+                }};
+                bindPopupAction(line);
+                drawnItems.addLayer(line);
+                
+                // Update Icon ODP jadi Merah jika penuh
+                if(used + 1 >= cap) odp.setIcon(icons.odpFull);
+                
+                alert(`Tersambung ke ${props.name} (${c.dist.toFixed(0)}m)`);
+                return true;
+            }
+        }
+        alert("Semua ODP Terdekat PENUH!");
+        return false;
+    }
+
+    function refreshODPIcons() {
+        drawnItems.eachLayer(layer => {
+            if(layer.feature && layer.feature.properties.type === 'odp') {
+                var p = layer.feature.properties;
+                var cap = getCapacity(p.splitter);
+                var used = countConnections(p.name);
+                layer.setIcon((used >= cap) ? icons.odpFull : icons.odp);
+            }
+        });
+    }
+
+    function countConnections(odpName) {
+        let count = 0;
+        drawnItems.eachLayer(l => {
+            if(l.feature && l.feature.properties.type === 'cable_dropcore' && l.feature.properties.source_odp === odpName) count++;
+        });
+        return count;
+    }
+    
+    function getCapacity(str) { return str ? parseInt(str.split(':')[1]) : 8; }
+
+    // --- 6. UTILITIES (Search, Save, Load, GPS) ---
+    function locateUser() {
+        map.locate({setView: true, maxZoom: 18});
+    }
+    map.on('locationfound', e => {
+        userLayer.clearLayers();
+        L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#2563eb', fillOpacity: 1}).addTo(userLayer);
+        L.circle(e.latlng, {radius: e.accuracy/2, color: '#2563eb', fillOpacity: 0.1}).addTo(userLayer);
+    });
+
+    function searchMap() {
+        var val = document.getElementById('searchBox').value.toLowerCase();
+        if(val.length < 3) return;
+        
+        drawnItems.eachLayer(layer => {
+            if(layer.feature && layer.feature.properties.name.toLowerCase().includes(val)) {
+                if(layer.getLatLng) {
+                    map.flyTo(layer.getLatLng(), 18);
+                    layer.openPopup();
+                } else if(layer.getBounds) {
+                    map.fitBounds(layer.getBounds());
+                    layer.openPopup();
+                }
+            }
+        });
+    }
+
+    function saveData() { localStorage.setItem('rt_rw_net_v6', JSON.stringify(drawnItems.toGeoJSON())); }
+    
+    function loadData() {
+        var data = localStorage.getItem('rt_rw_net_v6');
+        if(data) {
+            L.geoJSON(JSON.parse(data), {
+                pointToLayer: (f, latlng) => createMarker(f.properties.type, latlng, f.properties),
+                onEachFeature: (f, layer) => {
+                    drawnItems.addLayer(layer);
+                    if(f.properties.type.includes('cable')) {
+                        var isDrop = f.properties.type === 'cable_dropcore';
+                        layer.setStyle({color: isDrop ? '#ca8a04' : '#db2777', dashArray: isDrop ? '5,5':null});
+                        bindPopupAction(layer);
+                    }
+                }
+            });
+            if(drawnItems.getLayers().length > 0) map.fitBounds(drawnItems.getBounds());
+        }
+    }
+
+    function saveDataFile() {
+        var a = document.createElement('a');
+        a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(drawnItems.toGeoJSON()));
+        a.download = "backup_jaringan_" + new Date().toISOString().slice(0,10) + ".json";
+        a.click();
+    }
+
+    function loadFromFile(input) {
+        var r = new FileReader();
+        r.onload = e => { localStorage.setItem('rt_rw_net_v6', JSON.stringify(JSON.parse(e.target.result))); location.reload(); };
+        r.readAsText(input.files[0]);
+    }
+    
+    function resetMap() { if(confirm("Yakin hapus semua?")) { localStorage.removeItem('rt_rw_net_v6'); location.reload(); } }
+
+    // Init
+    loadData();
+
+</script>
+</body>
+</html>
